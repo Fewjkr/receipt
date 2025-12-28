@@ -8,12 +8,21 @@ import pandas as pd
 import streamlit as st
 from PIL import Image
 
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
-from reportlab.lib import colors
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfgen import canvas
+
+# =========================
+# Optional PDF Dependency (ReportLab)
+# =========================
+HAS_REPORTLAB = True
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.pdfgen import canvas
+except ModuleNotFoundError:
+    HAS_REPORTLAB = False
+
 
 
 # =========================
@@ -197,6 +206,9 @@ def try_register_thai_font():
     Optional: If you want Thai in PDF perfectly, put a Thai TTF in assets, e.g. assets/THSarabunNew.ttf
     Then register it. If not found, fallback to Helvetica.
     """
+    if not HAS_REPORTLAB:
+        return "Helvetica"
+
     ttf_path = os.path.join(APP_DIR, "assets", "THSarabunNew.ttf")
     if os.path.exists(ttf_path):
         try:
@@ -219,6 +231,9 @@ def make_pdf(
     currency: str,
     logo_path: str = None
 ) -> bytes:
+    if not HAS_REPORTLAB:
+        raise RuntimeError("PDF generation requires 'reportlab'. Install it or deploy with requirements.txt.")
+
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
@@ -572,25 +587,34 @@ with left:
             st.success("บันทึกสำเร็จ ✅")
 
     with action2:
-        if st.button("สร้าง PDF (Preview/Generate)", use_container_width=True):
-            company = {"name": company_name, "address": company_address, "tax_id": company_tax}
-            customer = {"name": customer_name, "address": customer_address, "tax_id": customer_tax}
+        if not HAS_REPORTLAB:
+            st.warning("""⚠️ โหมดนี้ยังสร้าง PDF ไม่ได้ เพราะยังไม่ได้ติดตั้งไลบรารี 'reportlab'
 
-            pdf_bytes = make_pdf(
-                doc_no=doc_no,
-                created_at=created_at,
-                doc_type=doc_type,
-                company=company,
-                customer=customer,
-                payment_method=payment_method,
-                note=note,
-                items_df=df,
-                totals=totals,
-                currency=currency,
-                logo_path=LOGO_PATH if os.path.exists(LOGO_PATH) else None,
-            )
-            st.session_state["pdf_bytes"] = pdf_bytes
-            st.success("สร้าง PDF พร้อมดาวน์โหลด ✅")
+วิธีแก้:
+- เพิ่ม 'reportlab' ใน requirements.txt แล้ว deploy ใหม่
+หรือ
+- รันคำสั่ง: pip install reportlab (ในเครื่อง/เซิร์ฟเวอร์ที่ใช้รันแอป)
+""")
+        else:
+            if st.button("สร้าง PDF (Preview/Generate)", use_container_width=True):
+                company = {"name": company_name, "address": company_address, "tax_id": company_tax}
+                customer = {"name": customer_name, "address": customer_address, "tax_id": customer_tax}
+
+                pdf_bytes = make_pdf(
+                    doc_no=doc_no,
+                    created_at=created_at,
+                    doc_type=doc_type,
+                    company=company,
+                    customer=customer,
+                    payment_method=payment_method,
+                    note=note,
+                    items_df=df,
+                    totals=totals,
+                    currency=currency,
+                    logo_path=LOGO_PATH if os.path.exists(LOGO_PATH) else None,
+                )
+                st.session_state["pdf_bytes"] = pdf_bytes
+                st.success("สร้าง PDF พร้อมดาวน์โหลด ✅")
 
     with action3:
         pdf_bytes = st.session_state.get("pdf_bytes")
@@ -600,7 +624,7 @@ with left:
             file_name=f"{doc_no}.pdf",
             mime="application/pdf",
             use_container_width=True,
-            disabled=(pdf_bytes is None),
+            disabled=((not HAS_REPORTLAB) or (pdf_bytes is None)),
         )
 
     # Reset / New doc
